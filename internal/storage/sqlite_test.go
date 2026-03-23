@@ -30,8 +30,8 @@ func TestSQLiteSaveLoadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := again["Ada"]
-	if q.Nat20() != 2 || q.DanoTotal() != 10 || q.Custom() != "note" {
-		t.Fatalf("unexpected state: n20=%d dano=%d custom=%q", q.Nat20(), q.DanoTotal(), q.Custom())
+	if q.SucessoCritico() != 2 || q.DanoTotal() != 10 || q.Custom() != "note" {
+		t.Fatalf("unexpected state: n20=%d dano=%d custom=%q", q.SucessoCritico(), q.DanoTotal(), q.Custom())
 	}
 }
 
@@ -50,7 +50,7 @@ func TestSQLiteLoadMissingRowIsFreshPlayer(t *testing.T) {
 	if p == nil {
 		t.Fatal("expected player entry")
 	}
-	if p.Nat20() != 0 || p.Name() != "Nobody" {
-		t.Fatalf("expected fresh player, got n20=%d name=%q", p.Nat20(), p.Name())
+	if p.SucessoCritico() != 0 || p.Name() != "Nobody" {
+		t.Fatalf("expected fresh player, got n20=%d name=%q", p.SucessoCritico(), p.Name())
 	}
 }

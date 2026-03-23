@@ -17,16 +17,16 @@ func NewPlayer(name string) *Player {
 	return &Player{name: name}
 }
 
-func (p *Player) Name() string   { return p.name }
-func (p *Player) Nat20() int     { return p.nat20 }
-func (p *Player) Nat1() int      { return p.nat1 }
-func (p *Player) DanoTotal() int { return p.danoTotal }
-func (p *Player) DanoMax() int   { return p.danoMax }
-func (p *Player) CuraTotal() int { return p.curaTotal }
-func (p *Player) CuraMax() int   { return p.curaMax }
-func (p *Player) Quedas() int    { return p.quedas }
-func (p *Player) Mortes() int    { return p.mortes }
-func (p *Player) Custom() string { return p.custom }
+func (p *Player) Name() string        { return p.name }
+func (p *Player) SucessoCritico() int { return p.nat20 }
+func (p *Player) FalhaCritica() int   { return p.nat1 }
+func (p *Player) DanoTotal() int      { return p.danoTotal }
+func (p *Player) DanoMax() int        { return p.danoMax }
+func (p *Player) CuraTotal() int      { return p.curaTotal }
+func (p *Player) CuraMax() int        { return p.curaMax }
+func (p *Player) Quedas() int         { return p.quedas }
+func (p *Player) Mortes() int         { return p.mortes }
+func (p *Player) Custom() string      { return p.custom }
 
 func (p *Player) AddNat20() { p.nat20++ }
 func (p *Player) AddNat1()  { p.nat1++ }

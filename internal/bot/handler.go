@@ -77,13 +77,13 @@ func (b *GrimoireBot) RenderTable(focus string) string {
 	sb.WriteString("\x1b[1;34m==================================================\x1b[0m\n")
 	sb.WriteString("           📖 \x1b[1;37mGRIMOIRE: AUTOS DA AVENTURA\x1b[0m\n")
 	sb.WriteString("\x1b[1;34m==================================================\x1b[0m\n")
-	sb.WriteString("\x1b[1;33mJOGADOR  | N20 | N1 | D.TOTAL | D.MAX | C.TOTAL | C.MAX | Q | M \x1b[0m\n")
+	sb.WriteString("\x1b[1;33mJOGADOR  | Sucesso Critico | Falha Critica | D.TOTAL | D.MAX | C.TOTAL | C.MAX | Queda | Morte \x1b[0m\n")
 	sb.WriteString("--------------------------------------------------\n")
 
 	for _, name := range b.Players {
 		p := b.PlayersStats[name]
 		row := fmt.Sprintf("%-8s | %-3d | %-2d | %-7d | %-5d | %-7d | %-5d | %-1d | %-1d\n",
-			p.Name(), p.Nat20(), p.Nat1(), p.DanoTotal(), p.DanoMax(), p.CuraTotal(), p.CuraMax(), p.Quedas(), p.Mortes())
+			p.Name(), p.SucessoCritico(), p.FalhaCritica(), p.DanoTotal(), p.DanoMax(), p.CuraTotal(), p.CuraMax(), p.Quedas(), p.Mortes())
 		if p.Custom() != "" {
 			row += fmt.Sprintf(" └─ \x1b[0;32m%s\x1b[0m\n", p.Custom())
 		}
@@ -108,8 +108,8 @@ func (b *GrimoireBot) CreateComponents() []discordgo.MessageComponent {
 			discordgo.SelectMenu{CustomID: "select_player", Placeholder: "👤 Selecionar Jogador", Options: options},
 		}},
 		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-			discordgo.Button{Label: "N20", CustomID: "add_n20", Style: discordgo.SuccessButton},
-			discordgo.Button{Label: "N1", CustomID: "add_n1", Style: discordgo.DangerButton},
+			discordgo.Button{Label: "Sucesso Critico", CustomID: "add_n20", Style: discordgo.SuccessButton},
+			discordgo.Button{Label: "Falha Critica", CustomID: "add_n1", Style: discordgo.DangerButton},
 			discordgo.Button{Label: "Queda", CustomID: "add_q", Style: discordgo.SecondaryButton},
 			discordgo.Button{Label: "Morte", CustomID: "add_m", Style: discordgo.SecondaryButton},
 		}},

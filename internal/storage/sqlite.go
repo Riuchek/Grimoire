@@ -57,7 +57,7 @@ func (r *SQLiteRepo) SavePlayer(p *status.Player) error {
 		quedas=excluded.quedas, mortes=excluded.mortes,
 		custom=excluded.custom;`
 
-	_, err := r.db.Exec(query, p.Name(), p.Nat20(), p.Nat1(), p.DanoTotal(), p.DanoMax(), p.CuraTotal(), p.CuraMax(), p.Quedas(), p.Mortes(), p.Custom())
+	_, err := r.db.Exec(query, p.Name(), p.SucessoCritico(), p.FalhaCritica(), p.DanoTotal(), p.DanoMax(), p.CuraTotal(), p.CuraMax(), p.Quedas(), p.Mortes(), p.Custom())
 	return err
 }
 
