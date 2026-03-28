@@ -1,17 +1,28 @@
 package bot
 
 import (
+	"errors"
 	"grimoire/internal/domain/player"
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 const (
-	modalDataPrefix   = "modal_data:"
-	modalCustomPrefix = "modal_custom:"
+	modalDataPrefix     = "modal_data:"
+	modalCustomPrefix   = "modal_custom:"
+	modalEditFullPrefix = "modal_edit_full:"
+)
+
+type modalKind int
+
+const (
+	modalKindDanoCura modalKind = iota
+	modalKindCustom
+	modalKindEditFull
 )
 
 type undoEntry struct {
@@ -66,14 +77,49 @@ func interactionMessageID(ic *discordgo.Interaction) string {
 	return ""
 }
 
-func parseModalCustomID(id string) (msgID string, statsModal bool, ok bool) {
+func parseModalID(id string) (msgID string, kind modalKind, ok bool) {
 	if rest, ok := strings.CutPrefix(id, modalDataPrefix); ok {
-		return rest, true, true
+		return rest, modalKindDanoCura, true
 	}
 	if rest, ok := strings.CutPrefix(id, modalCustomPrefix); ok {
-		return rest, false, true
+		return rest, modalKindCustom, true
 	}
-	return "", false, false
+	if rest, ok := strings.CutPrefix(id, modalEditFullPrefix); ok {
+		return rest, modalKindEditFull, true
+	}
+	return "", 0, false
+}
+
+func modalTextValue(d discordgo.ModalSubmitInteractionData, row int) string {
+	return d.Components[row].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+}
+
+func validPanelMessageID(id string) bool {
+	if len(id) < 17 || len(id) > 22 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if id[i] < '0' || id[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+const maxDiscordModalTextRunes = 4000
+
+func validateCustomModalInput(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if !utf8.ValidString(raw) {
+		return player.ErrInvalidCustom
+	}
+	if utf8.RuneCountInString(raw) > maxDiscordModalTextRunes {
+		return player.ErrInvalidCustom
+	}
+	return nil
 }
 
 func (b *GrimoireBot) RespondSlashGrimoire(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -109,6 +155,10 @@ func (b *GrimoireBot) CreateComponents() []discordgo.MessageComponent {
 			discordgo.Button{Label: "📝 Registrar Dano/Cura", CustomID: "open_modal", Style: discordgo.PrimaryButton},
 			discordgo.Button{Label: "⚙️ Custom", CustomID: "open_custom", Style: discordgo.SecondaryButton},
 			discordgo.Button{Label: "↩ Desfazer", CustomID: "undo_last", Style: discordgo.SecondaryButton},
+		}},
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.Button{Label: "🗑 Limpar dados", CustomID: "clear_player", Style: discordgo.DangerButton},
+			discordgo.Button{Label: "✏️ Editar jogador", CustomID: "open_edit_full", Style: discordgo.PrimaryButton},
 		}},
 	}
 }
@@ -197,7 +247,7 @@ func (b *GrimoireBot) HandleComponents(s *discordgo.Session, i *discordgo.Intera
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseModal,
 			Data: &discordgo.InteractionResponseData{
-				CustomID: modalCustomPrefix + msgID, Title: "Anota\u00e7\u00e3o Custom: " + focus,
+				CustomID: modalCustomPrefix + msgID, Title: truncateRunes("Anotação custom: "+focus, 45),
 				Components: []discordgo.MessageComponent{
 					discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 						discordgo.TextInput{CustomID: "val_custom", Label: "Texto (ex: Sorte: 2)", Style: discordgo.TextInputShort, Value: p.Custom()},
@@ -206,10 +256,62 @@ func (b *GrimoireBot) HandleComponents(s *discordgo.Session, i *discordgo.Intera
 			},
 		})
 		return
+	case "clear_player":
+		b.recordUndo(msgID, focus, p.Snapshot())
+		p.ClearAll()
+		needsSave = true
+	case "open_edit_full":
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseModal,
+			Data: &discordgo.InteractionResponseData{
+				CustomID: modalEditFullPrefix + msgID,
+				Title:    truncateRunes("Editar jogador: "+focus, 45),
+				Components: []discordgo.MessageComponent{
+					discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+						discordgo.TextInput{CustomID: "val_n20", Label: "N20", Style: discordgo.TextInputShort, Placeholder: "0", Value: strconv.Itoa(p.SucessoCritico())},
+					}},
+					discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+						discordgo.TextInput{CustomID: "val_n1", Label: "N1", Style: discordgo.TextInputShort, Placeholder: "0", Value: strconv.Itoa(p.FalhaCritica())},
+					}},
+					discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
+							CustomID:    "val_dano_cura",
+							Label:       "Dano tot, max, cura tot, max (4 numeros)",
+							Style:       discordgo.TextInputShort,
+							Placeholder: "0 0 0 0",
+							Value:       strconv.Itoa(p.DanoTotal()) + " " + strconv.Itoa(p.DanoMax()) + " " + strconv.Itoa(p.CuraTotal()) + " " + strconv.Itoa(p.CuraMax()),
+						},
+					}},
+					discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
+							CustomID:    "val_q_m",
+							Label:       "Quedas e mortes (2 numeros)",
+							Style:       discordgo.TextInputShort,
+							Placeholder: "0 0",
+							Value:       strconv.Itoa(p.Quedas()) + " " + strconv.Itoa(p.Mortes()),
+						},
+					}},
+					discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+						discordgo.TextInput{CustomID: "val_custom_full", Label: "Anotacao custom", Style: discordgo.TextInputParagraph, Value: p.Custom()},
+					}},
+				},
+			},
+		})
+		return
 	}
 
 	if needsSave {
-		_ = b.Repo.SavePlayer(p)
+		if err := b.Repo.SavePlayer(p); err != nil {
+			b.popUndo(msgID)
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Nao foi possivel salvar os dados. Tente novamente.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
 	}
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -222,8 +324,8 @@ func (b *GrimoireBot) HandleModals(s *discordgo.Session, i *discordgo.Interactio
 	b.Mu.Lock()
 	defer b.Mu.Unlock()
 
-	msgID, statsModal, ok := parseModalCustomID(i.ModalSubmitData().CustomID)
-	if !ok {
+	msgID, modalKind, ok := parseModalID(i.ModalSubmitData().CustomID)
+	if !ok || !validPanelMessageID(msgID) {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{Content: "Formulario invalido.", Flags: discordgo.MessageFlagsEphemeral},
@@ -243,19 +345,117 @@ func (b *GrimoireBot) HandleModals(s *discordgo.Session, i *discordgo.Interactio
 	p := b.PlayersStats[focus]
 	d := i.ModalSubmitData()
 
-	b.recordUndo(msgID, focus, p.Snapshot())
-
-	if statsModal {
-		dano_total, _ := strconv.Atoi(d.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-		dano_max, _ := strconv.Atoi(d.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-		cura_total, _ := strconv.Atoi(d.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-		cura_max, _ := strconv.Atoi(d.Components[3].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-		p.UpdateStats(dano_total, dano_max, cura_total, cura_max)
-	} else {
-		p.SetCustom(d.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
+	switch modalKind {
+	case modalKindDanoCura:
+		statVals := make([]int, 4)
+		for row := 0; row < 4; row++ {
+			v, err := player.ParseModalStatInt(modalTextValue(d, row))
+			if err != nil {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "Valores invalidos. Use apenas numeros inteiros de 0 a 999999999.",
+						Flags:   discordgo.MessageFlagsEphemeral,
+					},
+				})
+				return
+			}
+			statVals[row] = v
+		}
+		b.recordUndo(msgID, focus, p.Snapshot())
+		p.UpdateStats(statVals[0], statVals[1], statVals[2], statVals[3])
+	case modalKindCustom:
+		raw := modalTextValue(d, 0)
+		if err := validateCustomModalInput(raw); err != nil {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Texto custom invalido (tamanho ou caracteres nao permitidos).",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+		b.recordUndo(msgID, focus, p.Snapshot())
+		p.SetCustom(raw)
+	case modalKindEditFull:
+		n20, err := player.ParseModalStatInt(modalTextValue(d, 0))
+		if err != nil {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Valores invalidos. Use apenas numeros inteiros de 0 a 999999999.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+		n1, err := player.ParseModalStatInt(modalTextValue(d, 1))
+		if err != nil {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Valores invalidos. Use apenas numeros inteiros de 0 a 999999999.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+		quad, err := player.ParseModalIntFields(modalTextValue(d, 2), 4)
+		if err != nil {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Bloco dano/cura: informe exatamente 4 numeros separados por espaco.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+		pair, err := player.ParseModalIntFields(modalTextValue(d, 3), 2)
+		if err != nil {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Quedas e mortes: informe exatamente 2 numeros separados por espaco.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+		raw := modalTextValue(d, 4)
+		if err := validateCustomModalInput(raw); err != nil {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Texto custom invalido (tamanho ou caracteres nao permitidos).",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+		b.recordUndo(msgID, focus, p.Snapshot())
+		p.LoadStats(n20, n1, quad[0], quad[1], quad[2], quad[3], pair[0], pair[1], raw)
+	default:
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{Content: "Formulario invalido.", Flags: discordgo.MessageFlagsEphemeral},
+		})
+		return
 	}
 
-	_ = b.Repo.SavePlayer(p)
+	if err := b.Repo.SavePlayer(p); err != nil {
+		b.popUndo(msgID)
+		msg := "Nao foi possivel salvar os dados. Tente novamente."
+		if errors.Is(err, player.ErrInvalidCustom) || errors.Is(err, player.ErrInvalidStats) || errors.Is(err, player.ErrInvalidName) {
+			msg = "Dados rejeitados por validacao de seguranca."
+		}
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{Content: msg, Flags: discordgo.MessageFlagsEphemeral},
+		})
+		return
+	}
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
