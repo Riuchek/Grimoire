@@ -2,7 +2,7 @@ package bot
 
 import (
 	"fmt"
-	"grimoire/internal/status"
+	"grimoire/internal/domain/player"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,20 +15,15 @@ const (
 	modalCustomPrefix = "modal_custom:"
 )
 
-type PlayerRepository interface {
-	SavePlayer(p *status.Player) error
-	LoadPlayers(names []string) (map[string]*status.Player, error)
-}
-
 type GrimoireBot struct {
 	Players      []string
-	PlayersStats map[string]*status.Player
-	Repo         PlayerRepository
+	PlayersStats map[string]*player.Player
+	Repo         player.Repository
 	activeByMsg  map[string]string
 	Mu           sync.Mutex
 }
 
-func NewGrimoireBot(names []string, players map[string]*status.Player, repo PlayerRepository) *GrimoireBot {
+func NewGrimoireBot(names []string, players map[string]*player.Player, repo player.Repository) *GrimoireBot {
 	return &GrimoireBot{
 		Players:      names,
 		PlayersStats: players,
@@ -52,10 +47,6 @@ func parseModalCustomID(id string) (msgID string, statsModal bool, ok bool) {
 		return rest, false, true
 	}
 	return "", false, false
-}
-
-func (b *GrimoireBot) persistSave(p *status.Player) {
-	_ = b.Repo.SavePlayer(p)
 }
 
 func (b *GrimoireBot) RespondSlashGrimoire(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -203,7 +194,7 @@ func (b *GrimoireBot) HandleComponents(s *discordgo.Session, i *discordgo.Intera
 	}
 
 	if needsSave {
-		b.persistSave(p)
+		_ = b.Repo.SavePlayer(p)
 	}
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -247,7 +238,7 @@ func (b *GrimoireBot) HandleModals(s *discordgo.Session, i *discordgo.Interactio
 		p.SetCustom(d.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 	}
 
-	b.persistSave(p)
+	_ = b.Repo.SavePlayer(p)
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,

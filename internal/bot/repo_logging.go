@@ -4,14 +4,16 @@ import (
 	"log/slog"
 	"time"
 
-	"grimoire/internal/status"
+	"grimoire/internal/domain/player"
 )
 
+var _ player.Repository = (*LoggingPlayerRepository)(nil)
+
 type LoggingPlayerRepository struct {
-	Inner PlayerRepository
+	Inner player.Repository
 }
 
-func (l *LoggingPlayerRepository) SavePlayer(p *status.Player) error {
+func (l *LoggingPlayerRepository) SavePlayer(p *player.Player) error {
 	start := time.Now()
 	err := l.Inner.SavePlayer(p)
 	ms := time.Since(start).Milliseconds()
@@ -23,7 +25,7 @@ func (l *LoggingPlayerRepository) SavePlayer(p *status.Player) error {
 	return err
 }
 
-func (l *LoggingPlayerRepository) LoadPlayers(names []string) (map[string]*status.Player, error) {
+func (l *LoggingPlayerRepository) LoadPlayers(names []string) (map[string]*player.Player, error) {
 	start := time.Now()
 	m, err := l.Inner.LoadPlayers(names)
 	ms := time.Since(start).Milliseconds()

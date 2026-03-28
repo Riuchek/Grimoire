@@ -2,7 +2,7 @@
 
 ## Visão geral
 
-O binário em `cmd/grimoire` carrega configuração, abre a sessão **Discord** (`discordgo`) e delega a orquestração para `internal/app`. O domínio do jogo (estado de cada jogador) vive em `internal/status`. A camada de bot (comandos, componentes, modais e renderização da mensagem) está em `internal/bot`. A persistência é **SQLite** em `internal/storage`, com um adaptador que só adiciona logs em `internal/bot` (`LoggingPlayerRepository`).
+O binário em `cmd/grimoire` carrega configuração, abre a sessão **Discord** (`discordgo`) e delega a orquestração para `internal/app`. O domínio do jogo (agregado `Player`) vive em `internal/domain/player`. A camada de bot (comandos, componentes, modais e renderização da mensagem) está em `internal/bot`. A persistência é **SQLite** em `internal/storage`, com um adaptador que só adiciona logs em `internal/bot` (`LoggingPlayerRepository`).
 
 ```mermaid
 flowchart LR
@@ -10,10 +10,11 @@ flowchart LR
   main --> app[internal/app]
   app --> bot[internal/bot]
   app --> storage[internal/storage]
-  bot --> status[internal/status]
-  bot --> repo[PlayerRepository]
-  storage --> repo
+  bot --> domain[internal/domain/player]
+  storage --> domain
 ```
+
+`SQLiteRepo` em `internal/storage` implementa `player.Repository`; `LoggingPlayerRepository` em `internal/bot` decora essa implementação com logs.
 
 ## Pacotes
 
@@ -22,8 +23,8 @@ flowchart LR
 | `cmd/grimoire` | Ponto de entrada: lê `DISCORD_TOKEN`, contexto com sinais de encerramento, chama `app.Run`. |
 | `internal/config` | Carrega `.env` subindo pelos diretórios pais, expõe token, caminho do DB e lista de nomes (`GRIMOIRE_PLAYERS`, separado por vírgulas). |
 | `internal/app` | Cria sessão Discord, repositório SQLite decorado com logging, instancia `GrimoireBot`, registra handlers de interação e o comando slash `grimoire`, abre gateway e espera `ctx.Done()`. |
-| `internal/bot` | `GrimoireBot`: tabela ANSI, menus e botões, mutex por mensagem (`activeByMsg` associa ID da mensagem ao jogador selecionado), `HandleComponents` / `HandleModals`, interface `PlayerRepository`. |
-| `internal/status` | Struct `Player` e operações de leitura/escrita de campos (sem Discord). |
+| `internal/bot` | `GrimoireBot`: tabela ANSI, menus e botões, mutex por mensagem (`activeByMsg` associa ID da mensagem ao jogador selecionado), `HandleComponents` / `HandleModals`. |
+| `internal/domain/player` | Agregado `Player`, porta `Repository` (persistência sem Discord). |
 | `internal/storage` | `SQLiteRepo`: migração implícita (`CREATE TABLE IF NOT EXISTS`), `SavePlayer` com `UPSERT`, `LoadPlayers` por lista de nomes. |
 
 ## Fluxo de uma interação
@@ -46,4 +47,4 @@ Tabela `players`: chave primária `name`, inteiros para nat20, nat1, dano/cura t
 
 ## Extensões naturais (não implementadas aqui)
 
-Novos comandos ou botões costumam passar por: método em `GrimoireBot`, eventual campo em `status.Player`, coluna em `storage` e migração da query `CREATE TABLE` / `SavePlayer` / `LoadPlayers`.
+Novos comandos ou botões costumam passar por: método em `GrimoireBot`, eventual campo em `domain/player.Player`, coluna em `storage` e migração da query `CREATE TABLE` / `SavePlayer` / `LoadPlayers`.

@@ -1,4 +1,4 @@
-package status
+package player
 
 type Player struct {
 	name      string
@@ -13,7 +13,7 @@ type Player struct {
 	custom    string
 }
 
-func NewPlayer(name string) *Player {
+func New(name string) *Player {
 	return &Player{name: name}
 }
 
