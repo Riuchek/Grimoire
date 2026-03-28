@@ -4,33 +4,33 @@ import (
 	"strings"
 	"testing"
 
-	"grimoire/internal/status"
+	"grimoire/internal/domain/player"
 )
 
 type fakeRepo struct{}
 
-func (fakeRepo) SavePlayer(p *status.Player) error { return nil }
+func (fakeRepo) SavePlayer(p *player.Player) error { return nil }
 
-func (fakeRepo) LoadPlayers(names []string) (map[string]*status.Player, error) {
-	m := make(map[string]*status.Player)
+func (fakeRepo) LoadPlayers(names []string) (map[string]*player.Player, error) {
+	m := make(map[string]*player.Player)
 	for _, n := range names {
-		m[n] = status.NewPlayer(n)
+		m[n] = player.New(n)
 	}
 	return m, nil
 }
 
 func TestRenderTableFocusLine(t *testing.T) {
 	names := []string{"Ada"}
-	stats := map[string]*status.Player{"Ada": status.NewPlayer("Ada")}
+	stats := map[string]*player.Player{"Ada": player.New("Ada")}
 	b := NewGrimoireBot(names, stats, fakeRepo{})
 
 	outEmpty := b.RenderTable("")
-	if strings.Contains(outEmpty, "Foco Atual") {
+	if strings.Contains(outEmpty, "Jogador Selecionado:") {
 		t.Fatal("expected no focus line when focus empty")
 	}
 
 	outFocus := b.RenderTable("Ada")
-	if !strings.Contains(outFocus, "Foco Atual: Ada") {
+	if !strings.Contains(outFocus, "Jogador Selecionado: Ada") {
 		t.Fatalf("expected focus line in output: %q", outFocus)
 	}
 }

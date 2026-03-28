@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"grimoire/internal/status"
+	"grimoire/internal/domain/player"
 
 	_ "modernc.org/sqlite"
 )
+
+var _ player.Repository = (*SQLiteRepo)(nil)
 
 type SQLiteRepo struct {
 	db *sql.DB
@@ -46,7 +48,7 @@ func (r *SQLiteRepo) Close() error {
 	return r.db.Close()
 }
 
-func (r *SQLiteRepo) SavePlayer(p *status.Player) error {
+func (r *SQLiteRepo) SavePlayer(p *player.Player) error {
 	query := `
 	INSERT INTO players (name, nat20, nat1, dano_total, dano_max, cura_total, cura_max, quedas, mortes, custom)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -61,12 +63,12 @@ func (r *SQLiteRepo) SavePlayer(p *status.Player) error {
 	return err
 }
 
-func (r *SQLiteRepo) LoadPlayers(names []string) (map[string]*status.Player, error) {
-	res := make(map[string]*status.Player)
+func (r *SQLiteRepo) LoadPlayers(names []string) (map[string]*player.Player, error) {
+	res := make(map[string]*player.Player)
 	for _, name := range names {
 		row := r.db.QueryRow(`SELECT nat20, nat1, dano_total, dano_max, cura_total, cura_max, quedas, mortes, custom FROM players WHERE name = ?`, name)
 
-		p := status.NewPlayer(name)
+		p := player.New(name)
 		var n20, n1, dt, dm, ct, cm, q, m int
 		var c string
 
